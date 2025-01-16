@@ -1,0 +1,31 @@
+name = "expense"
+main = "src/index.ts"
+compatibility_date = "2025-01-14"
+
+compatibility_flags = [ "nodejs_compat" ]
+
+# [vars]
+# MY_VAR = "my-variable"
+
+[[kv_namespaces]]
+binding = "expense"
+id = "eba36384ec024c6cbc23d3fc192a6cb9"
+
+# [[r2_buckets]]
+# binding = "MY_BUCKET"
+# bucket_name = "my-bucket"
+
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "my-database"
+# database_id = ""
+
+# [ai]
+# binding = "AI"
+
+# [observability]
+# enabled = true
+# head_sampling_rate = 1
+
+[nodejs_compat]
+compat = true
