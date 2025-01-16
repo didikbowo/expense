@@ -35,7 +35,7 @@ app.post('/webhook', async (c) => {
         case '/help':
           await sendMessage(chatId, 'Berikut adalah daftar perintah yang tersedia: expense');
           break;
-        case '/expense':
+        case '/pay':
           // Pisahkan deskripsi dan jumlah berdasarkan tanda ':'
           const [description, amount] = argsText.split(':').map((part: string) => part.trim());
 
