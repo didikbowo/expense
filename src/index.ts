@@ -48,7 +48,16 @@ app.post('/webhook', async (c) => {
             const amountNumber = parseFloat(amount.replace(/,/g, '')); // Menghapus koma jika ada
 
             if (!isNaN(amountNumber)) {
-              const values = await getCredKeyValues(c.env.expense);
+              // const values = await getCredKeyValues(c.env.expense);
+              const { keys } = await c.env.expense.list();
+              const keyNames = keys.map((key: any) => key.name);
+              const valuesArray = await Promise.all(
+                keyNames.map(async (key: any) => {
+                  const value = await c.env.expense.get(key);
+                  return { [key]: value };
+                })
+              );
+              const values = Object.assign({}, ...valuesArray);
               // Lanjutkan dengan logika penanganan yang sesuai
               await appendExpense(values, chatId, description, amountNumber);
             } else {
