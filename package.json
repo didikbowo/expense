@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "buffer": "^6.0.3",
+    "child_process": "^1.0.2",
     "crypto": "^1.0.1",
     "dotenv": "^16.4.7",
     "googleapis": "^144.0.0",

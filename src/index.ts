@@ -1,12 +1,16 @@
 import { Hono } from 'hono';
 import { google, Auth, sheets_v4 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
+import { exec } from 'child_process';
 
-type GOOGLE_CRED = {
+type CREDENTIAL = {
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
   GOOGLE_REFRESH_TOKEN: string
   GOOGLE_SPREADSHEET_ID: string
+  CD_ACCOUNT_ID: string
+  CD_KV_API_TOKEN: string
+  CD_KV_NAMESPACE_ID: string
 }
 
 type Bindings = {
@@ -44,15 +48,7 @@ app.post('/webhook', async (c) => {
             const amountNumber = parseFloat(amount.replace(/,/g, '')); // Menghapus koma jika ada
 
             if (!isNaN(amountNumber)) {
-              const { keys } = await c.env.expense.list();
-              const keyNames = keys.map((key: any) => key.name);
-              const valuesArray = await Promise.all(
-                keyNames.map(async (key: any) => {
-                  const value = await c.env.expense.get(key);
-                  return { [key]: value };
-                })
-              );
-              const values = Object.assign({}, ...valuesArray);
+              const values = await getCredKeyValues(c.env.expense);
               // Lanjutkan dengan logika penanganan yang sesuai
               await appendExpense(values, chatId, description, amountNumber);
             } else {
@@ -62,6 +58,9 @@ app.post('/webhook', async (c) => {
             await sendMessage(chatId, 'Format perintah tidak lengkap. Gunakan format: /expense deskripsi:jumlah');
           }
           break;
+        case '/refreshauth':
+          const values = await getCredKeyValues(c.env.expense);
+          await requestOAuthCode(values, chatId);
         // Tambahkan penanganan perintah lain di sini
         default:
           await sendMessage(chatId, `Perintah tidak dikenal: ${command}`);
@@ -86,7 +85,7 @@ async function sendMessage(chatId: number, text: string) {
   return res.json();
 }
 
-function getAuthenticatedClient(cred: GOOGLE_CRED, chatId: number): Auth.OAuth2Client {
+function getAuthenticatedClient(cred: CREDENTIAL, chatId: number): Auth.OAuth2Client {
 
   if (!cred.GOOGLE_CLIENT_ID || !cred.GOOGLE_CLIENT_SECRET || !cred.GOOGLE_REFRESH_TOKEN) {
     // throw new Error('Missing required environment variables');
@@ -105,7 +104,7 @@ function getAuthenticatedClient(cred: GOOGLE_CRED, chatId: number): Auth.OAuth2C
   return oauth2Client;
 }
 
-async function appendExpense(cred: GOOGLE_CRED, chatId: number, description: string, amount: number): Promise<void> {
+async function appendExpense(cred: CREDENTIAL, chatId: number, description: string, amount: number): Promise<void> {
   const auth: OAuth2Client = getAuthenticatedClient(cred, chatId);
   const sheets: sheets_v4.Sheets = google.sheets({ version: 'v4', auth });
   const spreadsheetId: string = cred.GOOGLE_SPREADSHEET_ID || '';
@@ -148,6 +147,18 @@ async function appendExpense(cred: GOOGLE_CRED, chatId: number, description: str
   }
 }
 
+async function getCredKeyValues(expense: any) {
+  const { keys } = await expense.list();
+  const keyNames = keys.map((key: any) => key.name);
+  const valuesArray = await Promise.all(
+    keyNames.map(async (key: any) => {
+      const value = await expense.get(key);
+      return { [key]: value };
+    })
+  );
+  return Object.assign({}, ...valuesArray);
+}
+
 function getDate() {
   const today = new Date();
   const yyyy = today.getFullYear();
@@ -158,5 +169,72 @@ function getDate() {
   return formattedToday;
 }
 
+async function requestOAuthCode(cred: CREDENTIAL, chatId: number) {
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${cred.GOOGLE_CLIENT_ID}&redirect_uri=http://localhost&scope=https://www.googleapis.com/auth/spreadsheets&access_type=offline`;
+  
+  exec(`curl "${url}"`, async (error, stdout, stderr) => {
+    if (error) {
+      await sendMessage(chatId, `Error executing curl: ${error}`);
+      return;
+    }
+    if (stderr) {
+      await sendMessage(chatId, `stderr: ${stderr}`);
+      return;
+    }
+
+    await sendMessage(chatId, `stdout: ${stdout}`);
+
+    const redirectUrl = stdout.trim();
+    const parsedUrl = new URL(redirectUrl);
+    const code = parsedUrl.searchParams.get('code');
+
+    if (code) {
+      const postUrl = 'https://oauth2.googleapis.com/token';
+      const postData = `code=${code}&client_id=${cred.GOOGLE_CLIENT_ID}&client_secret=${cred.GOOGLE_CLIENT_SECRET}&redirect_uri=http://localhost&grant_type=authorization_code`;
+
+      exec(`curl --request POST --data "${postData}" ${postUrl}`, async (postError, postStdout, postStderr) => {
+        if (postError) {
+          await sendMessage(chatId, `Error executing POST curl: ${postError}`);
+          return;
+        }
+        if (postStderr) {
+          await sendMessage(chatId, `stderr: ${postStderr}`);
+          return;
+        }
+        await sendMessage(chatId, `POST response: ${postStdout}`);
+
+        try {
+          const responseJson = JSON.parse(postStdout);
+          const refreshToken = responseJson.refresh_token;
+          if (refreshToken) {
+            await sendMessage(chatId, `Refresh token: ${refreshToken}`);
+
+            const putUrl = `https://api.cloudflare.com/client/v4/accounts/${cred.CD_ACCOUNT_ID}/storage/kv/namespaces/${cred.CD_KV_NAMESPACE_ID}/values/GOOGLE_REFRESH_TOKEN`;
+            const putHeaders = `-H "Authorization: Bearer ${cred.CD_KV_API_TOKEN}" -H "Content-Type: text/plain"`;
+            const putData = `--data "${refreshToken}"`;
+
+            exec(`curl -X PUT "${putUrl}" ${putHeaders} ${putData}`, async (putError, putStdout, putStderr) => {
+              if (putError) {
+                await sendMessage(chatId, `Error executing PUT curl: ${putError}`);
+                return;
+              }
+              if (putStderr) {
+                await sendMessage(chatId, `stderr: ${putStderr}`);
+                return;
+              }
+              await sendMessage(chatId, `PUT response: ${putStdout}`);
+            });
+          } else {
+            await sendMessage(chatId, `Refresh token not found in the response.`);
+          }
+        } catch (parseError) {
+          await sendMessage(chatId, `Error parsing JSON response: ${parseError}`);
+        }
+      });
+    } else {
+      await sendMessage(chatId, `Authorization code not found in the redirect URL.`);
+    }
+  });
+}
 
 export default app
