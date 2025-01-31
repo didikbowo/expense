@@ -26,7 +26,7 @@ app.post('/webhook', async (c) => {
   if (update.message && update.message.text) {
     const chatId = update.message.chat.id;
     const messageText = update.message.text;
-
+    await sendMessage(chatId, 'webhook triggered. text: ' + messageText);
     // Periksa apakah pesan merupakan perintah
     if (messageText.startsWith('/')) {
       const [command, ...args] = messageText.split(' ');
