@@ -70,6 +70,7 @@ app.post('/webhook', async (c) => {
         case '/refreshauth':
           const values = await getCredKeyValues(c.env.expense);
           await requestOAuthCode(values, chatId);
+          break;
         // Tambahkan penanganan perintah lain di sini
         default:
           await sendMessage(chatId, `Perintah tidak dikenal: ${command}`);
