@@ -26,7 +26,6 @@ app.post('/webhook', async (c) => {
   if (update.message && update.message.text) {
     const chatId = update.message.chat.id;
     const messageText = update.message.text;
-    await sendMessage(chatId, 'webhook triggered. text: ' + messageText);
     // Periksa apakah pesan merupakan perintah
     if (messageText.startsWith('/')) {
       const [command, ...args] = messageText.split(' ');
@@ -37,7 +36,7 @@ app.post('/webhook', async (c) => {
           await sendMessage(chatId, 'Selamat datang! Bot siap digunakan.');
           break;
         case '/help':
-          await sendMessage(chatId, 'Berikut adalah daftar perintah yang tersedia: expense');
+          await sendMessage(chatId, 'Berikut adalah daftar perintah yang tersedia: pay');
           break;
         case '/pay':
           // Pisahkan deskripsi dan jumlah berdasarkan tanda ':'
@@ -64,13 +63,13 @@ app.post('/webhook', async (c) => {
               await sendMessage(chatId, 'Format jumlah tidak valid. Pastikan Anda memasukkan angka yang benar.');
             }
           } else {
-            await sendMessage(chatId, 'Format perintah tidak lengkap. Gunakan format: /expense deskripsi:jumlah');
+            await sendMessage(chatId, 'Format perintah tidak lengkap. Gunakan format: /pay deskripsi:jumlah');
           }
           break;
-        case '/refreshauth':
-          const values = await getCredKeyValues(c.env.expense);
-          await requestOAuthCode(values, chatId);
-          break;
+        // case '/reload':
+        //   const values = await getCredKeyValues(c.env.expense);
+        //   await requestOAuthCode(values, chatId);
+        //   break;
         // Tambahkan penanganan perintah lain di sini
         default:
           await sendMessage(chatId, `Perintah tidak dikenal: ${command}`);
@@ -181,7 +180,7 @@ function getDate() {
 
 async function requestOAuthCode(cred: CREDENTIAL, chatId: number) {
   const url = `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${cred.GOOGLE_CLIENT_ID}&redirect_uri=http://localhost&scope=https://www.googleapis.com/auth/spreadsheets&access_type=offline`;
-  
+  await sendMessage(chatId, 'masuk requestOAuthCode: ');
   exec(`curl "${url}"`, async (error, stdout, stderr) => {
     if (error) {
       await sendMessage(chatId, `Error executing curl: ${error}`);
